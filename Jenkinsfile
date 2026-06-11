@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     tools {
-        maven 'Maven_3_8_7'
+        maven 'Maven_3_9_16'
     }
 
     stages {
@@ -25,7 +25,7 @@ pipeline {
             steps {
                 withDockerRegistry([credentialsId: 'dockerlogin', url: '']) {
                     script {
-                        app = docker.build("asecurityguru/testeb")
+                        app = docker.build("filshady0016/testeb")
                     }
                 }
             }
@@ -38,7 +38,7 @@ pipeline {
                         try {
                             sh '''
                                 export SNYK_TOKEN=$SNYK_TOKEN
-                                /opt/homebrew/bin/snyk container test asecurityguru/testeb
+                                /opt/homebrew/bin/snyk container test filshady0016/testeb
                             '''
                         } catch (err) {
                             echo err.getMessage()
