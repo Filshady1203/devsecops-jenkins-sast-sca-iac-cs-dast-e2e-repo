@@ -1,57 +1,83 @@
 pipeline {
-  agent any
-  tools {
-    maven 'Maven_3_8_7'
-  }
+    agent any
 
-  stages {
-    stage('CompileandRunSonarAnalysis') {
-      steps {
-        withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
-          bat("mvn -Dmaven.test.failure.ignore verify sonar:sonar -Dsonar.login=$SONAR_TOKEN -Dsonar.projectKey=easybuggy -Dsonar.host.url=http://localhost:9000/")
-        }
-      }
+    tools {
+        maven 'Maven_3_8_7'
     }
-    stage('Build') {
-      steps {
-        withDockerRegistry([credentialsId: "dockerlogin", url: ""]) {
-          script {
-            app = docker.build("asecurityguru/testeb")
-          }
-        }
-      }
-    }
-    stage('RunContainerScan') {
-      steps {
-        withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
-          script {
-            try {
-              bat("/opt/homebrew/bin/snyk container test asecurityguru/testeb")
-            } catch (err) {
-              echo err.getMessage()
+
+    stages {
+
+        stage('Compile and Run Sonar Analysis') {
+            steps {
+                withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
+                    sh '''
+                        mvn -Dmaven.test.failure.ignore=true \
+                        verify sonar:sonar \
+                        -Dsonar.login=$SONAR_TOKEN \
+                        -Dsonar.projectKey=easybuggy \
+                        -Dsonar.host.url=http://localhost:9000
+                    '''
+                }
             }
-          }
         }
-      }
-    }
-    stage('RunSnykSCA') {
-      steps {
-        withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
-          bat("mvn snyk:test -fn")
+
+        stage('Build') {
+            steps {
+                withDockerRegistry([credentialsId: 'dockerlogin', url: '']) {
+                    script {
+                        app = docker.build("asecurityguru/testeb")
+                    }
+                }
+            }
         }
-      }
-    }
-    stage('RunDASTUsingZAP') {
-      steps {
-        bat("/Applications/ZAP.app/Contents/Contents/Java/zap.sh -port 9393 -cmd -quickurl https://www.example.com -quickprogress -quickout /Applications/ZAP.app/Contents/Contents/Java/Output.html")
-      }
-    }
 
-    stage('checkov') {
-      steps {
-        bat("checkov -s -f main.tf")
-      }
-    }
+        stage('Run Container Scan') {
+            steps {
+                withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
+                    script {
+                        try {
+                            sh '''
+                                export SNYK_TOKEN=$SNYK_TOKEN
+                                /opt/homebrew/bin/snyk container test asecurityguru/testeb
+                            '''
+                        } catch (err) {
+                            echo err.getMessage()
+                        }
+                    }
+                }
+            }
+        }
 
-  }
+        stage('Run Snyk SCA') {
+            steps {
+                withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
+                    sh '''
+                        export SNYK_TOKEN=$SNYK_TOKEN
+                        mvn snyk:test -fn
+                    '''
+                }
+            }
+        }
+
+        stage('Run DAST Using ZAP') {
+            steps {
+                sh '''
+                    /Applications/ZAP.app/Contents/Java/zap.sh \
+                    -port 9393 \
+                    -cmd \
+                    -quickurl https://www.example.com \
+                    -quickprogress \
+                    -quickout $WORKSPACE/Output.html
+                '''
+            }
+        }
+
+        stage('Checkov') {
+            steps {
+                sh '''
+                    checkov -s -f main.tf
+                '''
+            }
+        }
+    }
 }
