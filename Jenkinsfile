@@ -13,7 +13,7 @@ pipeline {
             mvn -Dmaven.test.failure.ignore=true verify sonar:sonar \
               -Dsonar.token="$SONAR_TOKEN" \
               -Dsonar.projectKey=easybuggy \
-              -Dsonar.host.url=http://localhost:8080/
+              -Dsonar.host.url=http://localhost:9000/
           '''
         }
       }
