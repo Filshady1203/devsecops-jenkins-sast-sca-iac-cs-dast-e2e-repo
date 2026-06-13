@@ -6,18 +6,6 @@ pipeline {
   }
 
   stages {
-    
-    stage('Check Docker') {
-  steps {
-    sh '''
-      whoami
-      echo "$PATH"
-      which docker
-      docker version
-    '''
-  }
-}
-    
     stage('Compile and Run Sonar Analysis') {
       steps {
         withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
@@ -35,6 +23,7 @@ pipeline {
       steps {
         withDockerRegistry([credentialsId: 'dockerlogin', url: '']) {
           script {
+            sh '/usr/local/bin/docker version || /opt/homebrew/bin/docker version'
             app = docker.build('filshady0016/testeb')
           }
         }
