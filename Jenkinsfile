@@ -6,6 +6,18 @@ pipeline {
   }
 
   stages {
+    
+    stage('Check Docker') {
+  steps {
+    sh '''
+      whoami
+      echo "$PATH"
+      which docker
+      docker version
+    '''
+  }
+}
+    
     stage('Compile and Run Sonar Analysis') {
       steps {
         withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
