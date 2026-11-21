@@ -151,12 +151,12 @@
 						<configuration>
 							<rules>
 								<requireMavenVersion>
-									<version>[3.0.0,)</version>
+									<version>[3.2.5,)</version>
 								</requireMavenVersion>
 								<requireJavaVersion>
-									<version>[1.6,)</version>
+									<version>[1.8,)</version>
 									<message>[ERROR] OLD JDK [${java.version}] in use.
-										EasyBuggy requires JDK 1.6 or later</message>
+										EasyBuggy requires JDK 8 or later</message>
 								</requireJavaVersion>
 							</rules>
 						</configuration>
@@ -189,6 +189,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-antrun-plugin</artifactId>
+				<version>3.1.0</version>
 				<executions>
 					<execution>
 						<id>create-empty-directory-and-english-properties</id>
@@ -250,7 +251,7 @@
 						</goals>
 						<configuration>
 							<classpathScope>test</classpathScope>
-							<executable>java</executable>
+							<executable>${java.home}/bin/java</executable>
 							<arguments>
 								<argument>${jvm.args.perm.size}</argument>
 								<argument>${jvm.args.gc.log.path}</argument>
