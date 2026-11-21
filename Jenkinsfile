@@ -31,8 +31,13 @@ pipeline {
   agent any
   tools { maven 'Maven_3_8_7' }
 
+  parameters {
+    string(name: 'SONAR_ORGANIZATION', defaultValue: '', trim: true, description: 'Organization key from SonarQube Cloud EU')
+    string(name: 'SONAR_PROJECT_KEY', defaultValue: '', trim: true, description: 'Project key from SonarQube Cloud EU')
+  }
+
   environment {
-    SONAR_HOST_URL = 'http://127.0.0.1:9000'
+    SONAR_HOST_URL = 'https://sonarcloud.io'
     ZAP_IMAGE = 'ghcr.io/zaproxy/zaproxy:stable'
   }
 
@@ -73,14 +78,9 @@ pipeline {
               echo 'Jenkins credential SONAR_TOKEN is empty or contains whitespace. Update its Secret text value.'
               exit 1
             fi
-            status=$(printf '%s' "Authorization: Bearer $SONAR_TOKEN" | curl -q --silent --show-error --max-time 15 --header @- --output /dev/null --write-out '%{http_code}' "$SONAR_HOST_URL/api/v2/analysis/version")
-            echo "SonarQube authenticated version check: HTTP $status"
-            case "$status" in
-              200) ;;
-              401) echo 'SonarQube rejected the credential supplied by this Jenkins job. Update SONAR_TOKEN in the credential store visible to this job.'; exit 1 ;;
-              403) echo 'SonarQube denied access. Check the token scope and Execute Analysis permission for easybuggy.'; exit 1 ;;
-              *) echo 'Unexpected SonarQube response. Check the configured server URL.'; exit 1 ;;
-            esac
+            : "${SONAR_ORGANIZATION:?Set SONAR_ORGANIZATION in Build with Parameters}"
+            : "${SONAR_PROJECT_KEY:?Set SONAR_PROJECT_KEY in Build with Parameters}"
+            echo "Analyzing $SONAR_ORGANIZATION/$SONAR_PROJECT_KEY on $SONAR_HOST_URL"
 
             scan_jdk=$(/usr/libexec/java_home -F -v 21 2>/dev/null || true)
             if [ -z "$scan_jdk" ] && command -v brew >/dev/null 2>&1; then
@@ -94,7 +94,7 @@ pipeline {
               skip_provisioning=true
             fi
             mvn -version
-            run_maven -B -e org.sonarsource.scanner.maven:sonar-maven-plugin:5.5.0.6356:sonar -Dsonar.projectKey=easybuggy -Dsonar.scanner.skipJreProvisioning="$skip_provisioning"
+            run_maven -B -e org.sonarsource.scanner.maven:sonar-maven-plugin:5.5.0.6356:sonar -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.organization="$SONAR_ORGANIZATION" -Dsonar.projectKey="$SONAR_PROJECT_KEY" -Dsonar.scanner.skipJreProvisioning="$skip_provisioning"
             ''')
           }
         }
