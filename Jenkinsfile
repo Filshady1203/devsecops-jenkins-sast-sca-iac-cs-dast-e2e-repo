@@ -68,7 +68,19 @@ pipeline {
         withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
           script {
             runMavenStep('Analyze EasyBuggy', '''
-            curl --silent --show-error --output /dev/null --max-time 10 --write-out 'SonarQube status endpoint HTTP %{http_code}\\n' "$SONAR_HOST_URL/api/system/status"
+            set +x
+            if [[ -z "${SONAR_TOKEN:-}" || "$SONAR_TOKEN" == *[[:space:]]* ]]; then
+              echo 'Jenkins credential SONAR_TOKEN is empty or contains whitespace. Update its Secret text value.'
+              exit 1
+            fi
+            status=$(printf '%s' "Authorization: Bearer $SONAR_TOKEN" | curl -q --silent --show-error --max-time 15 --header @- --output /dev/null --write-out '%{http_code}' "$SONAR_HOST_URL/api/v2/analysis/version")
+            echo "SonarQube authenticated version check: HTTP $status"
+            case "$status" in
+              200) ;;
+              401) echo 'SonarQube rejected the credential supplied by this Jenkins job. Update SONAR_TOKEN in the credential store visible to this job.'; exit 1 ;;
+              403) echo 'SonarQube denied access. Check the token scope and Execute Analysis permission for easybuggy.'; exit 1 ;;
+              *) echo 'Unexpected SonarQube response. Check the configured server URL.'; exit 1 ;;
+            esac
 
             scan_jdk=$(/usr/libexec/java_home -F -v 21 2>/dev/null || true)
             if [ -z "$scan_jdk" ] && command -v brew >/dev/null 2>&1; then
