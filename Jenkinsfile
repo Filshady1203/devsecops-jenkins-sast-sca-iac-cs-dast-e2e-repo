@@ -1,3 +1,21 @@
+def runMavenStep(String label, String commands) {
+  sh(label: label, script: '''#!/bin/bash
+set -eu
+run_maven() {
+  local log status
+  log=$(mktemp)
+  mvn "$@" 2>&1 | tee "$log"
+  status=${PIPESTATUS[0]}
+  if [ "$status" -ne 0 ]; then
+    echo "Maven failure details:"
+    awk '/Failed to execute goal|Caused by:/ && ++matches <= 12 {print}' "$log"
+  fi
+  rm -f "$log"
+  return "$status"
+}
+''' + commands)
+}
+
 def scanWithSnyk(String command) {
   withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
     int status = sh(script: command, returnStatus: true)
@@ -37,13 +55,20 @@ pipeline {
       }
     }
 
-    stage('Compile and run Sonar analysis') {
+    stage('Maven verify') {
+      steps {
+        script {
+          runMavenStep('Build EasyBuggy', 'run_maven -B -e -Dmaven.test.failure.ignore=true verify')
+        }
+      }
+    }
+
+    stage('SonarQube analysis') {
       steps {
         withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
-          sh '''
-            set -eu
+          script {
+            runMavenStep('Analyze EasyBuggy', '''
             curl --silent --show-error --output /dev/null --max-time 10 --write-out 'SonarQube status endpoint HTTP %{http_code}\\n' "$SONAR_HOST_URL/api/system/status"
-            mvn -B -e -Dmaven.test.failure.ignore=true verify
 
             scan_jdk=$(/usr/libexec/java_home -F -v 21 2>/dev/null || true)
             if [ -z "$scan_jdk" ] && command -v brew >/dev/null 2>&1; then
@@ -57,8 +82,9 @@ pipeline {
               skip_provisioning=true
             fi
             mvn -version
-            mvn -B -e org.sonarsource.scanner.maven:sonar-maven-plugin:5.5.0.6356:sonar -Dsonar.projectKey=easybuggy -Dsonar.scanner.skipJreProvisioning="$skip_provisioning"
-          '''
+            run_maven -B -e org.sonarsource.scanner.maven:sonar-maven-plugin:5.5.0.6356:sonar -Dsonar.projectKey=easybuggy -Dsonar.scanner.skipJreProvisioning="$skip_provisioning"
+            ''')
+          }
         }
       }
     }
