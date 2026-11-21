@@ -23,8 +23,7 @@ pipeline {
       steps {
         script {
           def mvnHome = tool 'Maven_3_8_7'
-          env.PATH = "${mvnHome}/bin:${env.HOME}/.docker/bin:/opt/homebrew/bin:/usr/local/bin:/Applications/Docker.app/Contents/Resources/bin:${env.PATH}"
-          env.PATH = "${env.PATH}:/opt/anaconda3/bin"
+          env.PATH = "${mvnHome}/bin:${env.HOME}/.docker/bin:/opt/homebrew/bin:/usr/local/bin:/Applications/Docker.app/Contents/Resources/bin:${env.PATH}:/opt/anaconda3/bin"
           env.RUN_ID = sh(script: 'uuidgen | tr A-Z a-z', returnStdout: true).trim()
           env.APP_IMAGE = "filshady0016/testeb:${env.RUN_ID}"
         }
@@ -41,7 +40,25 @@ pipeline {
     stage('Compile and run Sonar analysis') {
       steps {
         withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
-          sh 'mvn -B -Dmaven.test.failure.ignore=true verify org.sonarsource.scanner.maven:sonar-maven-plugin:5.5.0.6356:sonar -Dsonar.scanner.skipJreProvisioning=false -Dsonar.projectKey=easybuggy'
+          sh '''
+            set -eu
+            curl --silent --show-error --output /dev/null --max-time 10 --write-out 'SonarQube status endpoint HTTP %{http_code}\\n' "$SONAR_HOST_URL/api/system/status"
+            mvn -B -e -Dmaven.test.failure.ignore=true verify
+
+            scan_jdk=$(/usr/libexec/java_home -F -v 21 2>/dev/null || true)
+            if [ -z "$scan_jdk" ] && command -v brew >/dev/null 2>&1; then
+              scan_jdk="$(brew --prefix)/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+            fi
+
+            skip_provisioning=false
+            if [ -x "$scan_jdk/bin/java" ] && [ -n "$scan_jdk" ]; then
+              export JAVA_HOME="$scan_jdk"
+              export PATH="$JAVA_HOME/bin:$PATH"
+              skip_provisioning=true
+            fi
+            mvn -version
+            mvn -B -e org.sonarsource.scanner.maven:sonar-maven-plugin:5.5.0.6356:sonar -Dsonar.projectKey=easybuggy -Dsonar.scanner.skipJreProvisioning="$skip_provisioning"
+          '''
         }
       }
     }
@@ -76,12 +93,9 @@ pipeline {
           docker pull "$ZAP_IMAGE"
           docker network create --internal "$net"
           docker run -d --name "$net-app" --network "$net" --network-alias easybuggy "$APP_IMAGE"
-
           docker run --rm --network "$net" --entrypoint sh "$ZAP_IMAGE" -c '
             for i in $(seq 1 60); do
-              if curl -fsS --max-time 3 http://easybuggy:8080/ >/dev/null 2>&1; then
-                exit 0
-              fi
+              if curl -fsS --max-time 3 http://easybuggy:8080/ >/dev/null 2>&1; then exit 0; fi
               sleep 2
             done
             exit 1
@@ -110,9 +124,7 @@ pipeline {
     }
 
     stage('Checkov') {
-      steps {
-        sh 'checkov -s -f main.tf'
-      }
+      steps { sh 'checkov -s -f main.tf' }
     }
   }
 }
