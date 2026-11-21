@@ -24,6 +24,7 @@ pipeline {
         script {
           def mvnHome = tool 'Maven_3_8_7'
           env.PATH = "${mvnHome}/bin:${env.HOME}/.docker/bin:/opt/homebrew/bin:/usr/local/bin:/Applications/Docker.app/Contents/Resources/bin:${env.PATH}"
+          env.PATH = "${env.PATH}:/opt/anaconda3/bin"
           env.RUN_ID = sh(script: 'uuidgen | tr A-Z a-z', returnStdout: true).trim()
           env.APP_IMAGE = "filshady0016/testeb:${env.RUN_ID}"
         }
