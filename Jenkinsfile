@@ -41,7 +41,7 @@ pipeline {
     stage('Compile and run Sonar analysis') {
       steps {
         withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
-          sh 'mvn -B -Dmaven.test.failure.ignore=true verify sonar:sonar -Dsonar.projectKey=easybuggy'
+          sh 'mvn -B -Dmaven.test.failure.ignore=true verify org.sonarsource.scanner.maven:sonar-maven-plugin:5.5.0.6356:sonar -Dsonar.scanner.skipJreProvisioning=false -Dsonar.projectKey=easybuggy'
         }
       }
     }
