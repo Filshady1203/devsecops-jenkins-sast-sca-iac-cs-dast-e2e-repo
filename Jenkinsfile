@@ -61,11 +61,50 @@ pipeline {
           env.DOCKER_HOST = sh(script: '''docker context inspect --format '{{.Endpoints.docker.Host}}' ''',
                                returnStdout: true).trim()
 
-          // Without JAVA_HOME, /usr/bin/java on macOS is only a stub.
-          env.JAVA_HOME = sh(returnStdout: true, script: '''
-            /usr/libexec/java_home -F -v "$BUILD_JDK" 2>/dev/null \
-              || { echo "JDK $BUILD_JDK not found, falling back to default JDK" >&2; /usr/libexec/java_home; }
-          ''').trim()
+          // Without JAVA_HOME, /usr/bin/java on macOS is only a stub. /usr/libexec/java_home only
+          // sees JDKs under /Library/Java/JavaVirtualMachines, so also check Homebrew, SDKMAN and
+          // user-level installs. Only the JDK path goes to stdout; all messages go to stderr.
+          env.JAVA_HOME = sh(label: 'Locate JDK', returnStdout: true, script: '''#!/bin/bash
+set -u
+want="${BUILD_JDK#1.}"   # "1.8" -> "8"
+
+is_jdk() { [ -n "$1" ] && [ -x "$1/bin/java" ] && [ -x "$1/bin/javac" ]; }
+
+candidates=()
+# 1. JAVA_HOME already set on the node (Manage Jenkins > Nodes > Environment variables)
+candidates+=("${JAVA_HOME:-}")
+# 2. JDKs registered with macOS: the requested version first, then any
+candidates+=("$(/usr/libexec/java_home -F -v "$BUILD_JDK" 2>/dev/null || true)")
+candidates+=("$(/usr/libexec/java_home 2>/dev/null || true)")
+# 3. Homebrew formulae (Apple Silicon and Intel prefixes): the requested version first
+for prefix in /opt/homebrew /usr/local; do
+  for f in "openjdk@$want" openjdk@21 openjdk@17 openjdk@11 openjdk; do
+    candidates+=("$prefix/opt/$f/libexec/openjdk.jdk/Contents/Home")
+  done
+done
+# 4. SDKMAN, plus JDKs in the system or user JVM folders (e.g. downloaded by IntelliJ)
+candidates+=("$HOME/.sdkman/candidates/java/current")
+for d in /Library/Java/JavaVirtualMachines/*/Contents/Home "$HOME"/Library/Java/JavaVirtualMachines/*/Contents/Home; do
+  candidates+=("$d")
+done
+
+for home in "${candidates[@]}"; do
+  if is_jdk "$home"; then
+    echo "Using JDK at $home" >&2
+    "$home/bin/java" -version >&2 2>&1 || true
+    printf '%s\\n' "$home"
+    exit 0
+  fi
+done
+
+cat >&2 <<'MSG'
+No JDK found on this Mac agent. Install one, then rerun the build:
+  brew install --cask temurin@8     # JDK 8 (Intel and Apple Silicon)
+  brew install openjdk@17           # or a newer JDK; then set BUILD_JDK = '17'
+Or set JAVA_HOME for this node in Manage Jenkins > Nodes > <node> > Environment variables.
+MSG
+exit 1
+''').trim()
           env.PATH = "${env.JAVA_HOME}/bin:${env.PATH}"
         }
         sh '''
