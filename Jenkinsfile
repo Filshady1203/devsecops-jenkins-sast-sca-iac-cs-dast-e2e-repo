@@ -280,7 +280,12 @@ exit 1
   post {
     always {
       // Remove the per-run image so the Mac's disk doesn't fill up.
-      sh 'if [ -n "${APP_IMAGE:-}" ]; then docker image rm -f "$APP_IMAGE" >/dev/null 2>&1 || true; fi'
+      sh(label: 'Remove run image', script: '''#!/bin/bash
+        if [ -n "${APP_IMAGE:-}" ]; then
+          docker image rm -f "$APP_IMAGE" >/dev/null 2>&1 || true
+          echo "Removed local image $APP_IMAGE"
+        fi
+      ''')
     }
   }
 }
